@@ -25,6 +25,11 @@ s3 = boto3.client("s3")
 BUCKET = "lettuce-bucket"
 
 print("Server AI đang khởi động...")
+# Endpoint dành riêng cho Health Check của Load Balancer
+@app.route('/health', methods=['GET'])
+def health_check():
+    # Trả về mã 200 OK và tin nhắn xác nhận
+    return jsonify({"status": "healthy"}), 200
 
 @app.post("/inference")
 async def upload_image(request: Request):

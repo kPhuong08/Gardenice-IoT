@@ -1,0 +1,25 @@
+# ============================================
+# Terraform Variables - Copy to terraform.tfvars
+# ============================================
+
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "dev"
+
+# Project Configuration
+project_name = "gardenice"
+
+# S3 Bucket Names
+plant_data_bucket_name = "iot-gardernice"        # ✅ Bucket hiện có của bạn
+website_bucket_name    = "gardenice-website-dev" # Bucket mới sẽ được tạo (phải unique)
+
+# EC2 Service URL (thay bằng URL thực tế của EC2 instance)
+ec2_service_url = "http://10.0.1.100:8000"
+
+# Plant Configuration (vì chỉ có 1 plant)
+plant_id = "plant_001"
+
+# Data Path trong S3 bucket
+# Cấu trúc của bạn: s3://iot-gardernice/images/*.jpg
+# Không có prefix folder → data_path_prefix = ""
+data_path_prefix = ""
