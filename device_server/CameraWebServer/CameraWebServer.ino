@@ -16,15 +16,15 @@
 // const char* ssid = "B5-901";         
 // const char* password = "123456Aa@"; 
 
-const char* ssid = "HT";        
-const char* password = "Thien@123";
+const char* ssid = "Redmi Note 13 Pro";        
+const char* password = "12341234";
 
 // Địa chỉ server AI của bạn
-const char* serverUrl = "http://192.168.230.140:5000/api/upload";
+const char* serverUrl = "http://3.91.53.20:5000/inference";
 
 // Biến để theo dõi thời gian upload
 unsigned long lastUploadTime = 0;
-const long uploadInterval = 3000; // Gửi ảnh mỗi 3 giây
+const long uploadInterval = 30000; // Gửi ảnh mỗi 3 giây
 
 void startCameraServer();
 
@@ -145,7 +145,7 @@ void setup() {
   // Get camera sensor and adjust settings
   sensor_t * s = esp_camera_sensor_get();
   if(s != NULL) {
-    s->set_vflip(s, 1);
+    s->set_vflip(s, 0);
     s->set_brightness(s, 1);
     s->set_saturation(s, 0);
     Serial.println("✓ Camera sensor settings applied");
