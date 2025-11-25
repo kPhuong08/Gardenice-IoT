@@ -1,121 +1,104 @@
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
 #include <HTTPClient.h>
 #include <WiFiClient.h>
 
-// ===================
-// Cấu hình
-// ===================
-const char* ssid = "HT";        
+// =======================
+// Cấu hình WiFi
+// =======================
+const char* ssid = "HT";
 const char* password = "Thien@123";
+
+// =======================
+// Cấu hình MQTT
+// =======================
+const char* mqtt_server = "3a28ae8aa3b449dba0a906bd966f1576.s1.eu.hivemq.cloud";
+const int mqtt_port = 8883;
+const char* mqtt_username = "lethien";
+const char* mqtt_password = "Thien@123";
+
+// =======================
+// Cấu hình AI Server
+// =======================
 const char* aiServerUrl = "http://server-alb-645944439.us-east-1.elb.amazonaws.com/inference";
 
-WiFiServer server(80);
+// =======================
+// Biến toàn cục
+// =======================
+WiFiClientSecure espClient;
+PubSubClient mqttClient(espClient);
+WiFiServer tcpServer(80);
 
-// Buffer 10KB 
+unsigned long lastSoilUpdate = 0;
+
+// Cấu hình cảm biến độ ẩm đất
+#define SOIL_PIN 1
+#define SOIL_MAX 4095
+#define SOIL_MIN 0
+
+// Buffer cho ảnh
 #define MAX_IMAGE_SIZE 10000
 uint8_t imageBuffer[MAX_IMAGE_SIZE];
 size_t imageSize = 0;
-
-// Biến để quản lý kết nối
 bool isForwarding = false;
 unsigned long lastForwardTime = 0;
 
-void setup() {
-  Serial.begin(115200);
-  delay(3000);  // Tăng delay khởi động
-  
-  Serial.println("\n=== ESP32 AI GATEWAY STABLE ===");
-  Serial.printf("Free RAM: %d bytes\n", ESP.getFreeHeap());
-  
-  // WiFi
-  WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false); // Tắt chế độ sleep để ổn định hơn
+// =======================
+// Hàm đọc độ ẩm đất
+// =======================
+float readSoilMoisture() {
+  int raw = analogRead(SOIL_PIN);
+  Serial.print("Raw ADC: ");
+  Serial.println(raw);
+
+  float moisture = map(raw, SOIL_MIN, SOIL_MAX, 0, 100);
+  if (moisture < 0) moisture = 0;
+  if (moisture > 100) moisture = 100;
+  return moisture;
+}
+
+// =======================
+// WiFi Setup
+// =======================
+void setup_wifi() {
+  Serial.print("Connecting to WiFi");
   WiFi.begin(ssid, password);
-  Serial.print("WiFi");
-  
-  int tries = 0;
-  while (WiFi.status() != WL_CONNECTED && tries < 30) {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
-    tries++;
   }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi OK");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("\n❌ WiFi FAIL");
-    delay(2000);
-    ESP.restart();
-  }
-  
-  // Start TCP server
-  server.begin();
-  server.setNoDelay(true); // Tắt Nagle algorithm
-  Serial.println("✅ TCP Server started on port 80");
-  Serial.println("================================\n");
+  Serial.println("\nWiFi connected!");
+  Serial.println("IP Address: " + WiFi.localIP().toString());
 }
 
-void loop() {
-  // Chống quá tải - chỉ xử lý 1 request mỗi 2 giây
-  if (isForwarding && millis() - lastForwardTime < 2000) {
-    delay(100);
-    return;
+// =======================
+// MQTT Functions
+// =======================
+void reconnectMQTT() {
+  while (!mqttClient.connected()) {
+    Serial.print("Connecting to MQTT...");
+    String clientID = "ESP32S3-" + String(random(0xffff), HEX);
+    if (mqttClient.connect(clientID.c_str(), mqtt_username, mqtt_password)) {
+      Serial.println("connected!");
+    } else {
+      Serial.print("Failed, rc=");
+      Serial.println(mqttClient.state());
+      delay(5000);
+    }
   }
-  
-  WiFiClient client = server.available();
-  
-  if (client) {
-    client.setTimeout(1000); // Giảm timeout
-    Serial.println("\n📡 Client connected");
-    
-    String request = "";
-    unsigned long timeout = millis();
-    
-    // Đọc request header
-    while (client.connected() && millis() - timeout < 3000) {
-      if (client.available()) {
-        char c = client.read();
-        request += c;
-        
-        if (request.endsWith("\r\n\r\n")) {
-          break;
-        }
-      }
-    }
-    
-    Serial.println("Request received");
-    
-    // Handle GET /test
-    if (request.indexOf("GET /test") >= 0) {
-      Serial.println("-> GET /test");
-      sendResponse(client, "HTTP/1.1 200 OK", "text/plain", "ESP32 OK!");
-    }
-    // Handle GET /info
-    else if (request.indexOf("GET /info") >= 0) {
-      Serial.println("-> GET /info");
-      String json = "{\"status\":\"ok\",\"ram\":" + String(ESP.getFreeHeap()) + "}";
-      sendResponse(client, "HTTP/1.1 200 OK", "application/json", json);
-    }
-    // Handle POST /upload
-    else if (request.indexOf("POST /upload") >= 0) {
-      Serial.println("-> POST /upload");
-      handleImageUpload(client, request);
-    }
-    else {
-      // 404
-      sendResponse(client, "HTTP/1.1 404 Not Found", "text/plain", "Not Found");
-    }
-    
-    delay(50);
-    client.stop();
-    Serial.println("Client closed");
-  }
-  
-  delay(10);
 }
 
+void publishMessage(const char* topic, String payload, bool retained) {
+  if (mqttClient.publish(topic, payload.c_str(), retained)) {
+    Serial.println("Published: " + payload);
+  }
+}
+
+// =======================
+// AI Gateway Functions
+// =======================
 void sendResponse(WiFiClient &client, String status, String contentType, String body) {
   client.println(status);
   client.println("Content-Type: " + contentType);
@@ -125,7 +108,6 @@ void sendResponse(WiFiClient &client, String status, String contentType, String 
 }
 
 void handleImageUpload(WiFiClient &client, String &request) {
-  // Tìm Content-Length
   int lengthIndex = request.indexOf("Content-Length: ");
   if (lengthIndex >= 0) {
     int lengthStart = lengthIndex + 16;
@@ -136,7 +118,6 @@ void handleImageUpload(WiFiClient &client, String &request) {
     Serial.printf("Content-Length: %d\n", contentLength);
     
     if (contentLength > 0 && contentLength <= MAX_IMAGE_SIZE) {
-      // Đọc body
       imageSize = 0;
       unsigned long timeout = millis();
       
@@ -150,11 +131,9 @@ void handleImageUpload(WiFiClient &client, String &request) {
       
       Serial.printf("✅ Received: %d bytes\n", imageSize);
       
-      // Gửi response ngay lập tức
       sendResponse(client, "HTTP/1.1 200 OK", "application/json", "{\"status\":\"received\"}");
       client.stop();
       
-      // Xử lý forward sau (không block client)
       if (imageSize > 0) {
         forwardToAI();
       }
@@ -167,13 +146,9 @@ void handleImageUpload(WiFiClient &client, String &request) {
   }
 }
 
-// ===================
-// Forward với Error Handling tốt hơn
-// ===================
 void forwardToAI() {
   if (imageSize == 0) return;
   
-  // Chống gọi đồng thời
   if (isForwarding) {
     Serial.println("⚠️  Already forwarding, skipping...");
     return;
@@ -191,17 +166,14 @@ void forwardToAI() {
     return;
   }
   
-  // Sử dụng local variables để tránh conflict
   size_t currentImageSize = imageSize;
   uint8_t* currentImageBuffer = imageBuffer;
   
   HTTPClient http;
-  
-  // Sử dụng begin với string thay vì WiFiClient để đơn giản hóa
   http.begin(String(aiServerUrl));
   http.addHeader("Content-Type", "image/jpeg");
   http.setTimeout(15000);
-  http.setReuse(false); // Quan trọng: không reuse connection
+  http.setReuse(false);
   
   Serial.println("[FWD] Sending to AI server...");
   
@@ -215,13 +187,120 @@ void forwardToAI() {
     Serial.printf("❌ [FWD] Error %d: %s\n", code, http.errorToString(code).c_str());
   }
   
-  // Cleanup triệt để
   http.end();
-  delay(100); // Đảm bảo cleanup hoàn tất
+  delay(100);
   
-  // Reset buffer
   imageSize = 0;
   isForwarding = false;
   
   Serial.printf("[FWD] Complete. Free RAM: %d bytes\n\n", ESP.getFreeHeap());
+}
+
+void handleTCPClient() {
+  if (isForwarding && millis() - lastForwardTime < 2000) {
+    delay(100);
+    return;
+  }
+  
+  WiFiClient client = tcpServer.available();
+  
+  if (client) {
+    client.setTimeout(1000);
+    Serial.println("\n📡 Client connected");
+    
+    String request = "";
+    unsigned long timeout = millis();
+    
+    while (client.connected() && millis() - timeout < 3000) {
+      if (client.available()) {
+        char c = client.read();
+        request += c;
+        
+        if (request.endsWith("\r\n\r\n")) {
+          break;
+        }
+      }
+    }
+    
+    Serial.println("Request received");
+    
+    if (request.indexOf("GET /test") >= 0) {
+      Serial.println("-> GET /test");
+      sendResponse(client, "HTTP/1.1 200 OK", "text/plain", "ESP32 OK!");
+    }
+    else if (request.indexOf("GET /info") >= 0) {
+      Serial.println("-> GET /info");
+      String json = "{\"status\":\"ok\",\"ram\":" + String(ESP.getFreeHeap()) + "}";
+      sendResponse(client, "HTTP/1.1 200 OK", "application/json", json);
+    }
+    else if (request.indexOf("POST /upload") >= 0) {
+      Serial.println("-> POST /upload");
+      handleImageUpload(client, request);
+    }
+    else {
+      sendResponse(client, "HTTP/1.1 404 Not Found", "text/plain", "Not Found");
+    }
+    
+    delay(50);
+    client.stop();
+    Serial.println("Client closed");
+  }
+}
+
+// =======================
+// Setup + Loop
+// =======================
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("\n=== ESP32-S3 COMBINED GATEWAY ===");
+  Serial.printf("Free RAM: %d bytes\n", ESP.getFreeHeap());
+
+  pinMode(SOIL_PIN, INPUT);
+
+  // Setup WiFi
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  setup_wifi();
+
+  // Setup MQTT
+  espClient.setInsecure();
+  mqttClient.setServer(mqtt_server, mqtt_port);
+
+  // Setup TCP Server
+  tcpServer.begin();
+  tcpServer.setNoDelay(true);
+  Serial.println("✅ TCP Server started on port 80");
+  Serial.println("✅ MQTT Client initialized");
+  Serial.println("================================\n");
+}
+
+void loop() {
+  // Xử lý MQTT
+  if (!mqttClient.connected()) {
+    reconnectMQTT();
+  }
+  mqttClient.loop();
+
+  // Gửi dữ liệu độ ẩm đất mỗi 5 giây
+  if (millis() - lastSoilUpdate > 30000) {
+    float soil = readSoilMoisture();
+    Serial.printf("Soil Moisture: %.2f %%\n", soil);
+
+    DynamicJsonDocument doc(256);
+    doc["soil_moisture"] = soil;
+
+    char mqtt_msg[128];
+    serializeJson(doc, mqtt_msg);
+
+    publishMessage("esp32s3/soil", mqtt_msg, true);
+
+    lastSoilUpdate = millis();
+  }
+
+  // Xử lý TCP client (AI Gateway)
+  handleTCPClient();
+
+  delay(10);
 }
