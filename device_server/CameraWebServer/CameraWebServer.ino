@@ -11,6 +11,9 @@
 const char* ssid = "HT";
 const char* password = "Thien@123";
 
+unsigned long lastImageSend = 0;
+const unsigned long IMAGE_SEND_INTERVAL = 30000; // 30 giây
+
 // =======================
 // Cấu hình MQTT
 // =======================
@@ -148,51 +151,62 @@ void handleImageUpload(WiFiClient &client, String &request) {
 
 void forwardToAI() {
   if (imageSize == 0) return;
-  
+
   if (isForwarding) {
     Serial.println("⚠️  Already forwarding, skipping...");
     return;
   }
-  
+
+  // --- Giới hạn 30 giây gửi 1 lần ---
+  if (millis() - lastImageSend < IMAGE_SEND_INTERVAL) {
+    Serial.println("⏳ Chưa đủ 30 giây => Không gửi ảnh");
+    isForwarding = false;
+    return;
+  }
+
   isForwarding = true;
   lastForwardTime = millis();
-  
+
   Serial.println("\n[FWD] Starting forward to AI server");
   Serial.printf("[FWD] Image size: %d bytes\n", imageSize);
-  
+
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("❌ [FWD] WiFi disconnected");
     isForwarding = false;
     return;
   }
-  
+
   size_t currentImageSize = imageSize;
   uint8_t* currentImageBuffer = imageBuffer;
-  
+
   HTTPClient http;
   http.begin(String(aiServerUrl));
   http.addHeader("Content-Type", "image/jpeg");
   http.setTimeout(15000);
   http.setReuse(false);
-  
+
   Serial.println("[FWD] Sending to AI server...");
-  
+
   int code = http.POST(currentImageBuffer, currentImageSize);
-  
+
   if (code > 0) {
     Serial.printf("✅ [FWD] HTTP %d\n", code);
     String response = http.getString();
     Serial.println("🤖 AI Response: " + response);
+
+    // Cập nhật lần gửi cuối
+    lastImageSend = millis();
+
   } else {
     Serial.printf("❌ [FWD] Error %d: %s\n", code, http.errorToString(code).c_str());
   }
-  
+
   http.end();
   delay(100);
-  
+
   imageSize = 0;
   isForwarding = false;
-  
+
   Serial.printf("[FWD] Complete. Free RAM: %d bytes\n\n", ESP.getFreeHeap());
 }
 
@@ -284,7 +298,7 @@ void loop() {
   mqttClient.loop();
 
   // Gửi dữ liệu độ ẩm đất mỗi 5 giây
-  if (millis() - lastSoilUpdate > 30000) {
+  if (millis() - lastSoilUpdate > 10000) {
     float soil = readSoilMoisture();
     Serial.printf("Soil Moisture: %.2f %%\n", soil);
 
