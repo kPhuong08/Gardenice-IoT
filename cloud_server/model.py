@@ -33,18 +33,17 @@ class Model2Class(nn.Module):
         if model_name.startswith("mobilenet") or model_name.startswith("efficientnet"):
             # For MobileNet and EfficientNet
             self.model.classifier[-1] = nn.Linear(
-                self.model.classifier[-1].in_features, 1, bias=True
+                self.model.classifier[-1].in_features, 3, bias=True
             )
         elif model_name.startswith("shufflenet") or model_name.startswith("resnet"):
             # For ShuffleNet and ResNet
             self.model.fc = nn.Linear(
-                self.model.fc.in_features, 1, bias=True
+                self.model.fc.in_features, 3, bias=True
             )
         else:
             raise ValueError(f"Model {model_name} not supported!")
         
         self.model = self.model.to(device)
-        self.num_params = sum(p.numel() for p in self.model.parameters())
 
     def forward(self, x): 
         return self.model(x)

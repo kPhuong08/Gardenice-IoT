@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load model
 model = Model2Class()
-model.load_state_dict(torch.load("resnet18 (2).pth", map_location=device))
+model.load_state_dict(torch.load("resnet18.pth", map_location=device))
 model.to(device)
 model.eval()
 
@@ -40,18 +40,29 @@ async def upload_image(request: Request):
             raise HTTPException(status_code=400, detail="Không có dữ liệu ảnh")
 
         # 2. Convert raw bytes to PIL (để upload)
-        pil_image = Image.open(io.BytesIO(image_data))
+        pil_image = Image.open(io.BytesIO(image_data)).convert("RGB")
 
-        # 3. Transform + inference
+        # 2. Transform → Tensor
         tensor_img = transform(pil_image)
         tensor_img = tensor_img.unsqueeze(0).to(device)
 
+        # 3. Inference
         output = model(tensor_img)
-        probs = torch.sigmoid(output)
 
-        result = "Healthy" if probs.item() > 0.5 else "Unhealthy"
+        # Vì model output 3 class → dùng softmax
+        probs = torch.softmax(output, dim=1)
+        print("Probabilities:", probs)
 
-        print(f"Result: {result}, Confidence: {probs.item()}")
+        # 4. Lấy class dự đoán
+        pred_class = torch.argmax(probs, dim=1).item()
+
+        # 5. Ánh xạ class → label
+        id2label = {0: "bacterial", 1: "fungal", 2: "healthy"}
+        result = id2label[pred_class]
+
+        confidence = probs[0][pred_class].item()
+
+        print(f"Result: {result}, Confidence: {confidence:.4f}")
 
         # 4. SAVE TO S3
         timestamp = int(time.time())

@@ -13,52 +13,58 @@ def set_seed(seed=42):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-def load_dataset(root_dir, train_ratio=0.8):
+def load_dataset(root_dir, eval_per_class=100, seed=42):
+    random.seed(seed)
+
     all_paths = []
     all_labels = []
 
-    class_0_dir = os.path.join(root_dir, "Healthy")
-    class_1_dir = os.path.join(root_dir, "UnHealthy")
+    class_dirs = {
+        0: os.path.join(root_dir, "Bacterial"),
+        1: os.path.join(root_dir, "fungal"),
+        2: os.path.join(root_dir, "healthy"),
+    }
 
-    # Lấy ảnh class 0
-    for f in os.listdir(class_0_dir):
-        all_paths.append(os.path.join(class_0_dir, f))
-        all_labels.append(0)
+    # Load toàn bộ dataset
+    for label, class_dir in class_dirs.items():
+        for f in os.listdir(class_dir):
+            all_paths.append(os.path.join(class_dir, f))
+            all_labels.append(label)
 
-    # Lấy ảnh class 1
-    for f in os.listdir(class_1_dir):
-        all_paths.append(os.path.join(class_1_dir, f))
-        all_labels.append(1)
+    # Gom theo class
+    class_to_indices = {0: [], 1: [], 2: []}
+    for idx, lbl in enumerate(all_labels):
+        class_to_indices[lbl].append(idx)
 
-    # Shuffle 1 lần duy nhất
-    indices = list(range(len(all_paths)))
-    random.shuffle(indices)
+    # Chọn eval set cố định
+    eval_idx = []
+    for cls, indices in class_to_indices.items():
+        random.shuffle(indices)
+        if len(indices) < eval_per_class:
+            raise ValueError(f"Class {cls} không đủ {eval_per_class} ảnh!")
+        eval_idx.extend(indices[:eval_per_class])
 
-    # Tạo train/val split
-    train_size = int(len(indices) * train_ratio)
-    
-    train_idx = indices[:train_size]
-    val_idx = indices[train_size:]
+    eval_idx_set = set(eval_idx)
 
+    # Train = những ảnh còn lại
+    train_idx = [i for i in range(len(all_paths)) if i not in eval_idx_set]
+
+    # Shuffle train và eval
+    random.shuffle(train_idx)
+    random.shuffle(eval_idx)
+
+    # Lấy path/label
     train_paths = [all_paths[i] for i in train_idx]
     train_labels = [all_labels[i] for i in train_idx]
 
-    val_paths = [all_paths[i] for i in val_idx]
-    val_labels = [all_labels[i] for i in val_idx]
+    eval_paths  = [all_paths[i] for i in eval_idx]
+    eval_labels = [all_labels[i] for i in eval_idx]
 
-    # Thống kê số lượng mỗi class
-    train_stats = Counter(train_labels)
-    val_stats = Counter(val_labels)
+    # Stats
+    print("Train stats:", Counter(train_labels))
+    print("Eval stats:", Counter(eval_labels))
 
-    print("Train set stats:")
-    print(f"  Healthy (0): {train_stats.get(0, 0)}")
-    print(f"  UnHealthy (1): {train_stats.get(1, 0)}\n")
-
-    print("Validation set stats:")
-    print(f"  Healthy (0): {val_stats.get(0, 0)}")
-    print(f"  UnHealthy (1): {val_stats.get(1, 0)}\n")
-
-    return train_paths, train_labels, val_paths, val_labels
+    return train_paths, train_labels, eval_paths, eval_labels
 
 
 transform = transforms.Compose([
