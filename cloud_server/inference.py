@@ -22,7 +22,7 @@ app = FastAPI()
 
 # init S3 client
 s3 = boto3.client("s3")
-BUCKET = "lettuce-bucket"
+BUCKET = "iot-gardernice"
 
 print("Server AI đang khởi động...")
 # Endpoint dành riêng cho Health Check của Load Balancer
@@ -85,14 +85,14 @@ async def upload_image(request: Request):
         s3.put_object(
             Bucket=BUCKET,
             Key=result_key,
-            Body=f"{result}\n{probs.item()}".encode("utf-8"),
+            Body=f"{result}\n{confidence:.4f}".encode("utf-8"),  # use confidence
             ContentType="text/plain"
         )
 
         # 5. Trả response
         return JSONResponse(content={
             "result": result,
-            "confidence": probs.item(),
+            "confidence": confidence,  # use confidence here too
             "saved_image": image_key,
             "saved_text": result_key
         })
