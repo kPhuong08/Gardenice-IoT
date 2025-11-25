@@ -14,7 +14,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load model
 model = Model2Class()
-model.load_state_dict(torch.load("resnet18.pth", map_location=device))
+model.load_state_dict(torch.load("model.pth", map_location=device))
 model.to(device)
 model.eval()
 
