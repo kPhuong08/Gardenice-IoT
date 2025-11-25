@@ -154,7 +154,7 @@ class LaptopCameraClient:
         print("✅ Camera closed")
 
 if __name__ == "__main__":
-    ESP32_IP = "http://192.168.60.225"
+    ESP32_IP = "http://192.168.12.225"
     
     client = LaptopCameraClient(esp32_url=ESP32_IP, camera_index=0)
     
@@ -162,6 +162,6 @@ if __name__ == "__main__":
     if client.test_connection():
         print("\n🚀 Starting camera stream in 3 seconds...")
         time.sleep(3)
-        client.start_streaming(interval=5)
+        client.start_streaming(interval=30)
     else:
         print("\n❌ Connection test failed!")
