@@ -1,0 +1,16 @@
+[Unit]
+Description=Gardenice IoT MQTT Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+ExecStart=/usr/bin/python3 /home/ubuntu/mqtt_bridge.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/var/log/mqtt-bridge.log
+StandardError=append:/var/log/mqtt-bridge-error.log
+
+[Install]
+WantedBy=multi-user.target

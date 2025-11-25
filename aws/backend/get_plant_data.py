@@ -38,17 +38,18 @@ def lambda_handler(event, context):
         # Get latest image from S3 and generate pre-signed URL
         image_url = get_latest_image_url(plant_id)
         
+        # Get latest sensor data from MQTT/S3
+        sensor_data = get_latest_sensor_data(plant_id)
+        
         # Combine data
         response_data = {
             'plant_id': plant_id,
             'timestamp': datetime.utcnow().isoformat() + 'Z',
             'metrics': {
-                'ai_evaluation': ai_evaluation
-                # TODO: Add sensor metrics when ESP32 is connected
-                # 'humidity': data.get('humidity'),
-                # 'temperature': data.get('temperature'),
-                # 'soil_moisture': data.get('soil_moisture'),
-                # 'light_level': data.get('light_level'),
+                'ai_evaluation': ai_evaluation,
+                'soil_moisture': sensor_data.get('soil_moisture') if sensor_data else None,
+                'rain': sensor_data.get('rain') if sensor_data else None,
+                'light': sensor_data.get('light_level') if sensor_data else None
             },
             'image_url': image_url
         }
@@ -194,3 +195,66 @@ def get_cors_headers():
 #     except Exception as e:
 #         print(f"Error fetching EC2 metrics: {str(e)}")
 #         return None
+
+
+def get_latest_sensor_data(plant_id='plant_001'):
+    """
+    Get latest sensor data from S3 raw_data folder (from MQTT/HiveMQ).
+    
+    Args:
+        plant_id: Plant identifier
+        
+    Returns:
+        Dictionary with latest sensor readings or None
+    """
+    try:
+        # Look for sensor data in raw_data folder
+        # Path: raw_data/{MQTT_TOPIC}/YYYY-MM-DD_HH-MM-SS.json
+        # Default topic: esp32s3/soil
+        mqtt_topic = os.environ.get('MQTT_TOPIC', 'esp32s3/soil')
+        prefix = f"raw_data/{mqtt_topic}/"
+        
+        response = s3_client.list_objects_v2(
+            Bucket=PLANT_DATA_BUCKET,
+            Prefix=prefix,
+            MaxKeys=10
+        )
+        
+        if 'Contents' not in response or len(response['Contents']) == 0:
+            print(f"No sensor data found in S3 at {prefix}")
+            return None
+        
+        # Get latest file
+        latest_file = sorted(
+            response['Contents'],
+            key=lambda x: x['LastModified'],
+            reverse=True
+        )[0]
+        
+        print(f"Reading sensor data from: {latest_file['Key']}")
+        
+        # Read file content
+        obj = s3_client.get_object(
+            Bucket=PLANT_DATA_BUCKET,
+            Key=latest_file['Key']
+        )
+        
+        data = json.loads(obj['Body'].read().decode('utf-8'))
+        
+        # Extract sensor values from payload
+        payload = data.get('payload', {})
+        
+        sensor_data = {
+            'soil_moisture': payload.get('soil_moisture'),
+            'rain': payload.get('rain'),  # Boolean: True if raining, False if dry
+            'light_level': payload.get('light_level'),
+            'timestamp': data.get('mqtt_timestamp') or data.get('received_at'),
+            'device_id': payload.get('device_id')
+        }
+        
+        print(f"Sensor data retrieved: {sensor_data}")
+        return sensor_data
+        
+    except Exception as e:
+        print(f"Error reading sensor data from S3: {str(e)}")
+        return None

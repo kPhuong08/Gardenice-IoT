@@ -120,6 +120,7 @@ Desktop.ini
 **/*.crt
 **/secrets.json
 **/credentials.json
+**/MQTT_CREDENTIALS.md
 
 # ============================================
 # Project Specific

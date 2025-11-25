@@ -121,22 +121,12 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
           {/* Sensor Data Section */}
           <div className="sensors-info">
             <h4>📊 Sensor Readings</h4>
-            {metrics?.temperature !== undefined || metrics?.soil_moisture !== undefined ? (
+            {metrics?.soil_moisture !== undefined || metrics?.rain !== undefined || metrics?.light !== undefined ? (
               <div className="sensor-grid">
-                <div className="sensor-card">
-                  <div className="sensor-icon">🌡️</div>
-                  <div className="sensor-data">
-                    <span className="sensor-label">Temperature</span>
-                    <span className="sensor-value">
-                      {metrics?.temperature !== undefined ? `${metrics.temperature}°C` : "N/A"}
-                    </span>
-                  </div>
-                </div>
-
                 <div className="sensor-card">
                   <div className="sensor-icon">💧</div>
                   <div className="sensor-data">
-                    <span className="sensor-label">Soil Moisture</span>
+                    <span className="sensor-label">Soil Moisture:  </span>
                     <span className="sensor-value">
                       {metrics?.soil_moisture !== undefined ? `${metrics.soil_moisture}%` : "N/A"}
                     </span>
@@ -144,11 +134,11 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
                 </div>
 
                 <div className="sensor-card">
-                  <div className="sensor-icon">💨</div>
+                  <div className="sensor-icon">🌧️</div>
                   <div className="sensor-data">
-                    <span className="sensor-label">Air Humidity</span>
+                    <span className="sensor-label">Rain Sensor:  </span>
                     <span className="sensor-value">
-                      {metrics?.humidity !== undefined ? `${metrics.humidity}%` : "N/A"}
+                      {metrics?.rain !== undefined ? (metrics.rain ? "Raining" : "Dry") : "N/A"}
                     </span>
                   </div>
                 </div>
@@ -156,7 +146,7 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
                 <div className="sensor-card">
                   <div className="sensor-icon">☀️</div>
                   <div className="sensor-data">
-                    <span className="sensor-label">Light Level</span>
+                    <span className="sensor-label">Light Level:  </span>
                     <span className="sensor-value">
                       {metrics?.light !== undefined ? `${metrics.light} lux` : "N/A"}
                     </span>
@@ -166,7 +156,7 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
             ) : (
               <div className="sensor-placeholder">
                 <p className="info-text">Sensor data will appear here once your IoT device starts sending readings.</p>
-                <p className="info-text">Expected metrics: Temperature, Soil Moisture, Air Humidity, Light Level</p>
+                <p className="info-text">Expected metrics: Soil Moisture, Rain Sensor, Light Level</p>
               </div>
             )}
           </div>

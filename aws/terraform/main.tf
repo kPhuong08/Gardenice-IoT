@@ -73,6 +73,7 @@ module "lambda" {
     EC2_SERVICE_URL   = var.ec2_service_url
     PLANT_ID          = var.plant_id
     DATA_PATH_PREFIX  = var.data_path_prefix
+    MQTT_TOPIC        = "esp32s3/soil"  # MQTT topic for sensor data
   }
 
   tags = local.common_tags
@@ -93,9 +94,9 @@ module "api_gateway" {
   tags = local.common_tags
 }
 
-# ============================================
-# Module: MQTT Bridge (HiveMQ Webhook)
-# ============================================
+# # ============================================
+# # Module: MQTT Bridge (HiveMQ Webhook)
+# # ============================================
 module "mqtt_bridge" {
   source = "./modules/mqtt-bridge"
 

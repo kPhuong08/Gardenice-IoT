@@ -17,7 +17,7 @@ function App() {
         <PlantDetails plantId={plantId} />
       </main>
       <footer className="App-footer">
-        <p>Powered by AWS Serverless Architecture</p>
+        <p>Gardernice - Monitor your garden in a effective way</p>
       </footer>
     </div>
   );
