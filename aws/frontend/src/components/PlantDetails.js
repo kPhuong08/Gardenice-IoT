@@ -16,14 +16,14 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
 
   useEffect(() => {
     fetchPlantData()
-    // Refresh data every 30 seconds
-    const interval = setInterval(fetchPlantData, 30000)
+    // Refresh data every 10 seconds
+    const interval = setInterval(fetchPlantData, 10000)
     return () => clearInterval(interval)
   }, [plantId])
 
   /**
    * Fetch plant data from API Gateway
-   * Currently returns: AI evaluation + image URL
+   * Returns: AI evaluation + sensor data + image URL
    */
   const fetchPlantData = async () => {
     try {
@@ -31,9 +31,12 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
       setError(null)
 
       const response = await axios.get(`${API_ENDPOINT}/${plantId}`, {
-        timeout: 10000,
+        timeout: 30000,
         headers: {
           "Content-Type": "application/json",
+          "Cache-Control": "no-cache",
+          "Pragma": "no-cache",
+          "Expires": "0",
         },
       })
 
@@ -121,42 +124,78 @@ const PlantDetails = ({ plantId = "Plant-001" }) => {
           {/* Sensor Data Section */}
           <div className="sensors-info">
             <h4>📊 Sensor Readings</h4>
-            {metrics?.soil_moisture !== undefined || metrics?.rain !== undefined || metrics?.light !== undefined ? (
+            {metrics?.soil_moisture !== undefined || 
+             metrics?.rain !== undefined || 
+             metrics?.temperature !== undefined || 
+             metrics?.humidity !== undefined ? (
               <div className="sensor-grid">
+                {/* Soil Moisture */}
                 <div className="sensor-card">
                   <div className="sensor-icon">💧</div>
                   <div className="sensor-data">
-                    <span className="sensor-label">Soil Moisture:  </span>
+                    <span className="sensor-label">Soil Moisture:</span>
                     <span className="sensor-value">
                       {metrics?.soil_moisture !== undefined ? `${metrics.soil_moisture}%` : "N/A"}
                     </span>
                   </div>
                 </div>
 
+                {/* Rain Sensor */}
                 <div className="sensor-card">
                   <div className="sensor-icon">🌧️</div>
                   <div className="sensor-data">
-                    <span className="sensor-label">Rain Sensor:  </span>
+                    <span className="sensor-label">Rain Sensor:</span>
                     <span className="sensor-value">
-                      {metrics?.rain !== undefined ? (metrics.rain ? "Raining" : "Dry") : "N/A"}
+                      {metrics?.rain !== undefined 
+                        ? (metrics.rain === 1 ? "Raining" : "Dry") 
+                        : "N/A"}
                     </span>
                   </div>
                 </div>
 
+                {/* Temperature */}
                 <div className="sensor-card">
-                  <div className="sensor-icon">☀️</div>
+                  <div className="sensor-icon">🌡️</div>
                   <div className="sensor-data">
-                    <span className="sensor-label">Light Level:  </span>
+                    <span className="sensor-label">Temperature:</span>
                     <span className="sensor-value">
-                      {metrics?.light !== undefined ? `${metrics.light} lux` : "N/A"}
+                      {metrics?.temperature !== undefined 
+                        ? `${metrics.temperature}°C` 
+                        : "N/A"}
                     </span>
                   </div>
                 </div>
+
+                {/* Humidity*/}
+                <div className="sensor-card">
+                  <div className="sensor-icon">💨</div>
+                  <div className="sensor-data">
+                    <span className="sensor-label">Humidity:</span>
+                    <span className="sensor-value">
+                      {metrics?.humidity !== undefined 
+                        ? `${metrics.humidity}%` 
+                        : "N/A"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Light Level*/}
+                {metrics?.light !== undefined && (
+                  <div className="sensor-card">
+                    <div className="sensor-icon">☀️</div>
+                    <div className="sensor-data">
+                      <span className="sensor-label">Light Level:</span>
+                      <span className="sensor-value">
+                        {metrics.light !== undefined ? `${metrics.light} lux` : "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="sensor-placeholder">
                 <p className="info-text">Sensor data will appear here once your IoT device starts sending readings.</p>
-                <p className="info-text">Expected metrics: Soil Moisture, Rain Sensor, Light Level</p>
+                <p className="info-text">Expected metrics: Soil Moisture, Rain Sensor, Temperature, Humidity, Light Level</p>
               </div>
             )}
           </div>
@@ -172,7 +211,7 @@ const getHealthIcon = (evaluation) => {
   const evalLower = evaluation.toLowerCase()
   if (evalLower.includes("healthy") && !evalLower.includes("unhealthy")) {
     return "✅"
-  } else if (evalLower.includes("unhealthy")) {
+  } else if (evalLower.includes("unhealthy") || evalLower.includes("fungal") || evalLower.includes("bacterial")) {
     return "⚠️"
   }
   return "❓"
@@ -184,7 +223,7 @@ const getHealthStatusClass = (evaluation) => {
   const evalLower = evaluation.toLowerCase()
   if (evalLower.includes("healthy") && !evalLower.includes("unhealthy")) {
     return "healthy"
-  } else if (evalLower.includes("unhealthy")) {
+  } else if (evalLower.includes("unhealthy") || evalLower.includes("fungal") || evalLower.includes("bacterial")) {
     return "unhealthy"
   }
   return "unknown"
