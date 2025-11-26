@@ -19,6 +19,7 @@ class LaptopCameraClient:
             print("❌ Không thể mở camera laptop!")
             return False
         
+        # Đặt độ phân giải nhỏ để tối ưu cho ESP32
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 320)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         
@@ -45,6 +46,7 @@ class LaptopCameraClient:
                     self.send_count += 1
                     print(f"\n📸 [CAPTURE #{self.send_count}] Taking snapshot...")
                     
+                    # Dùng threading để gửi không làm chậm luồng hiển thị camera
                     thread = threading.Thread(
                         target=self.send_image_to_esp32, 
                         args=(frame, self.send_count)
@@ -74,7 +76,8 @@ class LaptopCameraClient:
             
             # Encode ảnh
             small_frame = cv2.resize(frame, (320, 240))
-            encode_param = [cv2.IMWRITE_JPEG_QUALITY, 50]
+            # Tối ưu hóa: Giảm chất lượng JPEG xuống 30 để giảm kích thước gói tin
+            encode_param = [cv2.IMWRITE_JPEG_QUALITY, 30] 
             _, img_encoded = cv2.imencode('.jpg', small_frame, encode_param)
             image_data = img_encoded.tobytes()
             
@@ -87,17 +90,23 @@ class LaptopCameraClient:
                 f"{self.esp32_url}/upload",
                 data=image_data,
                 headers={'Content-Type': 'image/jpeg'},
-                timeout=10
+                timeout=15 # Tăng timeout lên 15s để đảm bảo
             )
             
             elapsed = time.time() - start_time
             
             print(f"📥 [SEND #{count}] Response received in {elapsed:.2f}s")
             print(f"📥 [SEND #{count}] Status: {response.status_code}")
-            print(f"📥 [SEND #{count}] Response: {response.text}")
             
             if response.status_code == 200:
                 self.success_count += 1
+                try:
+                    # In ra response text nếu nó là JSON hoặc văn bản ngắn
+                    response_json = response.json()
+                    print(f"📥 [SEND #{count}] Response: {json.dumps(response_json)}")
+                except:
+                    print(f"📥 [SEND #{count}] Response: {response.text[:100]}...")
+
                 print(f"✅ [SEND #{count}] SUCCESS! (Total success: {self.success_count}/{self.send_count})")
                 return True
             else:
@@ -105,10 +114,11 @@ class LaptopCameraClient:
                 return False
                 
         except requests.exceptions.Timeout:
-            print(f"⏱️  [SEND #{count}] TIMEOUT - ESP32 not responding")
+            print(f"⏱️  [SEND #{count}] TIMEOUT - ESP32 not responding after 15s")
             return False
         except requests.exceptions.ConnectionError as e:
-            print(f"🔌 [SEND #{count}] CONNECTION ERROR: {e}")
+            # Lỗi 10054 (ConnectionResetError) sẽ nằm ở đây
+            print(f"🔌 [SEND #{count}] CONNECTION ERROR: {type(e).__name__}: {e}")
             return False
         except Exception as e:
             print(f"❌ [SEND #{count}] ERROR: {type(e).__name__}: {e}")
@@ -122,25 +132,24 @@ class LaptopCameraClient:
         
         tests = [
             ("/test", "Simple test"),
-            ("/info", "System info"),
-            ("/status", "Detailed status")
+            ("/info", "System info")
         ]
         
+        all_ok = True
         for endpoint, description in tests:
             print(f"\n🧪 Testing {endpoint} - {description}")
             try:
                 url = f"{self.esp32_url}{endpoint}"
-                print(f"   URL: {url}")
-                
                 response = requests.get(url, timeout=5)
                 print(f"   ✅ Status: {response.status_code}")
                 print(f"   📄 Response: {response.text[:200]}")
-                
+                if response.status_code != 200: all_ok = False
             except Exception as e:
-                print(f"   ❌ Failed: {e}")
+                print(f"   ❌ Failed: {type(e).__name__}: {e}")
+                all_ok = False
         
         print("\n" + "=" * 50)
-        return True
+        return all_ok
     
     def cleanup(self):
         """Dọn dẹp"""
@@ -154,7 +163,8 @@ class LaptopCameraClient:
         print("✅ Camera closed")
 
 if __name__ == "__main__":
-    ESP32_IP = "http://192.168.12.225"
+    # Đảm bảo IP này chính xác
+    ESP32_IP = "http://192.168.12.225" 
     
     client = LaptopCameraClient(esp32_url=ESP32_IP, camera_index=0)
     
@@ -162,6 +172,7 @@ if __name__ == "__main__":
     if client.test_connection():
         print("\n🚀 Starting camera stream in 3 seconds...")
         time.sleep(3)
-        client.start_streaming(interval=30)
+        # Gửi ảnh mỗi 15 giây
+        client.start_streaming(interval=15) 
     else:
-        print("\n❌ Connection test failed!")
+        print("\n❌ Connection test failed! Check IP/WiFi.")
