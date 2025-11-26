@@ -26,8 +26,7 @@ class LaptopCameraClient:
         print("\n" + "=" * 50)
         print("✅ Camera laptop đã sẵn sàng!")
         print(f"🎯 Target ESP32: {self.esp32_url}")
-        print(f"⏰ Send interval: {interval}s")
-        print("📷 Nhấn 'q' để thoát")
+        print("📷 Cửa sổ Camera đang mở (Không có chữ). Nhấn 'q' để thoát.")
         print("=" * 50 + "\n")
         
         last_send_time = 0
@@ -44,22 +43,23 @@ class LaptopCameraClient:
                 # Gửi ảnh định kỳ
                 if current_time - last_send_time >= interval:
                     self.send_count += 1
-                    print(f"\n📸 [CAPTURE #{self.send_count}] Taking snapshot...")
                     
                     # Dùng threading để gửi không làm chậm luồng hiển thị camera
+                    # Copy frame để đảm bảo luồng gửi ảnh không bị ảnh hưởng bởi luồng hiển thị
+                    frame_to_send = frame.copy()
+                    
                     thread = threading.Thread(
                         target=self.send_image_to_esp32, 
-                        args=(frame, self.send_count)
+                        args=(frame_to_send, self.send_count)
                     )
                     thread.daemon = True
                     thread.start()
                     
                     last_send_time = current_time
                 
-                # Hiển thị stats
-                cv2.putText(frame, f"Sent: {self.send_count} | Success: {self.success_count}", 
-                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                cv2.imshow('Laptop Camera - Press Q to quit', frame)
+                # --- PHẦN ĐÃ CHỈNH SỬA: XÓA BỎ cv2.putText ---
+                # Chỉ hiển thị khung hình sạch
+                cv2.imshow('Camera Feed (Clean)', frame)
                 
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
@@ -72,107 +72,57 @@ class LaptopCameraClient:
     def send_image_to_esp32(self, frame, count):
         """Gửi ảnh đến ESP32"""
         try:
-            print(f"🔄 [SEND #{count}] Processing image...")
+            print(f"🔄 [SEND #{count}] Đang gửi ảnh...")
             
             # Encode ảnh
             small_frame = cv2.resize(frame, (320, 240))
-            # Tối ưu hóa: Giảm chất lượng JPEG xuống 30 để giảm kích thước gói tin
             encode_param = [cv2.IMWRITE_JPEG_QUALITY, 30] 
             _, img_encoded = cv2.imencode('.jpg', small_frame, encode_param)
             image_data = img_encoded.tobytes()
-            
-            print(f"📦 [SEND #{count}] Image size: {len(image_data)} bytes")
-            print(f"📤 [SEND #{count}] POSTing to {self.esp32_url}/upload...")
-            
-            start_time = time.time()
             
             response = requests.post(
                 f"{self.esp32_url}/upload",
                 data=image_data,
                 headers={'Content-Type': 'image/jpeg'},
-                timeout=15 # Tăng timeout lên 15s để đảm bảo
+                timeout=15 
             )
-            
-            elapsed = time.time() - start_time
-            
-            print(f"📥 [SEND #{count}] Response received in {elapsed:.2f}s")
-            print(f"📥 [SEND #{count}] Status: {response.status_code}")
             
             if response.status_code == 200:
                 self.success_count += 1
-                try:
-                    # In ra response text nếu nó là JSON hoặc văn bản ngắn
-                    response_json = response.json()
-                    print(f"📥 [SEND #{count}] Response: {json.dumps(response_json)}")
-                except:
-                    print(f"📥 [SEND #{count}] Response: {response.text[:100]}...")
-
-                print(f"✅ [SEND #{count}] SUCCESS! (Total success: {self.success_count}/{self.send_count})")
-                return True
+                print(f"✅ [SEND #{count}] Gửi thành công!")
             else:
-                print(f"❌ [SEND #{count}] FAILED with status {response.status_code}")
-                return False
+                print(f"❌ [SEND #{count}] Thất bại: {response.status_code}")
                 
-        except requests.exceptions.Timeout:
-            print(f"⏱️  [SEND #{count}] TIMEOUT - ESP32 not responding after 15s")
-            return False
-        except requests.exceptions.ConnectionError as e:
-            # Lỗi 10054 (ConnectionResetError) sẽ nằm ở đây
-            print(f"🔌 [SEND #{count}] CONNECTION ERROR: {type(e).__name__}: {e}")
-            return False
         except Exception as e:
-            print(f"❌ [SEND #{count}] ERROR: {type(e).__name__}: {e}")
-            return False
+            print(f"❌ [SEND #{count}] Lỗi: {e}")
     
     def test_connection(self):
         """Test kết nối với ESP32"""
-        print("\n" + "=" * 50)
-        print("🔍 TESTING CONNECTION TO ESP32")
-        print("=" * 50)
-        
-        tests = [
-            ("/test", "Simple test"),
-            ("/info", "System info")
-        ]
-        
-        all_ok = True
-        for endpoint, description in tests:
-            print(f"\n🧪 Testing {endpoint} - {description}")
-            try:
-                url = f"{self.esp32_url}{endpoint}"
-                response = requests.get(url, timeout=5)
-                print(f"   ✅ Status: {response.status_code}")
-                print(f"   📄 Response: {response.text[:200]}")
-                if response.status_code != 200: all_ok = False
-            except Exception as e:
-                print(f"   ❌ Failed: {type(e).__name__}: {e}")
-                all_ok = False
-        
-        print("\n" + "=" * 50)
-        return all_ok
+        print(f"Testing connection to {self.esp32_url}...")
+        try:
+            requests.get(f"{self.esp32_url}/test", timeout=3)
+            print("✅ Kết nối OK")
+            return True
+        except:
+            print("❌ Không thể kết nối tới ESP32")
+            return False
     
     def cleanup(self):
         """Dọn dẹp"""
         if self.cap:
             self.cap.release()
         cv2.destroyAllWindows()
-        print(f"\n📊 Statistics:")
-        print(f"   Total sent: {self.send_count}")
-        print(f"   Successful: {self.success_count}")
-        print(f"   Failed: {self.send_count - self.success_count}")
         print("✅ Camera closed")
 
 if __name__ == "__main__":
     # Đảm bảo IP này chính xác
-    ESP32_IP = "http://192.168.12.225" 
+    ESP32_IP = "http://192.168.67.225" 
     
     client = LaptopCameraClient(esp32_url=ESP32_IP, camera_index=0)
     
-    # Test connection first
     if client.test_connection():
-        print("\n🚀 Starting camera stream in 3 seconds...")
+        print("\n🚀 Bắt đầu sau 3 giây...")
         time.sleep(3)
-        # Gửi ảnh mỗi 15 giây
         client.start_streaming(interval=15) 
     else:
-        print("\n❌ Connection test failed! Check IP/WiFi.")
+        print("\n❌ Lỗi kết nối! Kiểm tra IP.")
