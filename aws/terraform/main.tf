@@ -73,7 +73,7 @@ module "lambda" {
     EC2_SERVICE_URL   = var.ec2_service_url
     PLANT_ID          = var.plant_id
     DATA_PATH_PREFIX  = var.data_path_prefix
-    MQTT_TOPIC        = "esp32s3/soil"  # MQTT topic for sensor data
+    MQTT_TOPIC        = "esp32s3/sensors"  # MQTT topic for sensor data
   }
 
   tags = local.common_tags
